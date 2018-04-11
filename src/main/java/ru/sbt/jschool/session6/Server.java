@@ -34,15 +34,12 @@ public class Server {
         }
         while (true) {
             try (
-                    Socket socket = serverSocket.accept();
+                    Socket socket = Objects.requireNonNull(serverSocket).accept();
                     BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                     BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
             ) {
-                String query = readInputHeaders(reader);
-                if (query.endsWith("/")){
-                    query = query.substring(0, query.length() - 1);
-                }
-                createResponse(query, writer, Paths.get(properties.getProperty("directory")));
+                String request = readRequest(reader);
+                createResponse(request, writer, Paths.get(properties.getProperty("directory")), properties.getProperty("fileExtension"));
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -57,9 +54,9 @@ public class Server {
         return dateFormat.format(calendar.getTime());
     }
 
-    private String readInputHeaders(BufferedReader bufferedReader) {
+    private String readRequest(BufferedReader bufferedReader) {
         StringBuilder stringBuilder = new StringBuilder();
-        String query = "";
+        String request = "";
         while (true) {
             try {
                 String line = bufferedReader.readLine();
@@ -67,7 +64,7 @@ public class Server {
                     break;
                 } else {
                     if (line.startsWith("GET")) {
-                        query = line.substring(5, line.length() - 9);
+                        request = line.substring(5, line.length() - 9);
                     }
                     stringBuilder.append(line).append('\n');
                 }
@@ -75,30 +72,17 @@ public class Server {
                 e.printStackTrace();
             }
         }
-        System.out.println(stringBuilder);
-        return query;
+        // запись stringBuilder в лог
+        return (request.endsWith("/") ? request.substring(0, request.length() - 1) : request);
     }
 
     private void sendResponse(BufferedWriter writer, String message, Status status, ContentType contentType) {
         try {
-            StringBuilder response = new StringBuilder();
-            response.append("HTTP/1.1 ")
-                    .append(status.toString())
-                    .append("\r\n")
-                    .append("Date: ")
-                    .append(getServerTime())
-                    .append("\r\n")
-                    .append("Server: java/1.8\r\n")
-                    .append("Content-Type: ")
-                    .append(contentType.toString())
-                    .append("\r\n")
-                    .append("Content-Length: ")
-                    .append(message.length())
-                    .append("\r\n")
-                    .append("Connection: keep-alive\r\n")
-                    .append("\r\n")
-                    .append(message);
-            writer.write(response.toString());
+            String response = String
+                    .format("HTTP/1.1 %s\r\n" +
+                            "Date: %s\r\nServer: java/1.8\r\nContent-Type: %s\r\nContent-Length: %s\r\nConnection: keep-alive\r\n\n%s",
+                    status.toString(), getServerTime(), contentType.toString(), message.length(), message);
+            writer.write(response);
             writer.flush();
         } catch (IOException e) {
             e.printStackTrace();
@@ -115,11 +99,11 @@ public class Server {
         return properties;
     }
 
-    private int getFreeId(Path path, String endsWith){
+    private int getFreeId(Path path, String fileExtension){
         File file = path.toFile();
-        Set<Integer> ids =  getFileList(path, endsWith)
+        Set<Integer> ids =  getFileList(path, fileExtension)
                 .stream()
-                .map(v -> Integer.valueOf(v.getName().substring(0, v.getName().length() - endsWith.length())))
+                .map(v -> Integer.valueOf(v.getName().substring(0, v.getName().length() - fileExtension.length())))
                 .collect(Collectors.toSet());
         for (int i = 0; true; i++) {
             if (!ids.contains(i)){
@@ -128,34 +112,33 @@ public class Server {
         }
     }
 
-    private Set<File> getFileList(Path path, String endsWith){
-        Set<File> fileList = Arrays
+    private Set<File> getFileList(Path path, String fileExtension){
+        return Arrays
                 .stream(Objects.requireNonNull(path.toFile().listFiles()))
-                .filter(v -> v.getName().endsWith(endsWith)).collect(Collectors.toSet());
-        return fileList;
+                .filter(v -> v.getName().endsWith(fileExtension)).collect(Collectors.toSet());
     }
 
-    private void createResponse(String query, BufferedWriter writer, Path path) {
+    private void createResponse(String query, BufferedWriter writer, Path path, String fileExtension) {
         try {
             if (query.startsWith("user")) {
                 JSONFormatter jsonFormatter = new JSONFormatterImpl();
                 if (query.contains("create")){
                     Map<String, String> args = Arrays.stream(query.substring(query.indexOf('?') + 1).split("&"))
                             .collect(Collectors.toMap(v -> v.split("=")[0], v -> v.split("=")[1]));
-                    int id = saveUser(new User(args.get("name"), Integer.valueOf(args.get("age")), Integer.valueOf(args.get("salary"))), path);
+                    int id = saveUser(new User(args.get("name"), Integer.valueOf(args.get("age")), Integer.valueOf(args.get("salary"))), path, fileExtension);
                     sendResponse(writer, "ID " + id, Status.OK, ContentType.HTML);
                 } else if (query.contains("delete")) {
                     int id = Integer.valueOf(query.substring(query.lastIndexOf('/') + 1, query.length()));
-                    if (deleteUser(id, path)){
+                    if (deleteUser(id, path, fileExtension)){
                         sendResponse(writer, "Done", Status.OK, ContentType.HTML);
                     } else {
                         sendResponse(writer, "User not found", Status.NOT_FOUND, ContentType.HTML);
                     }
                 } else if (query.contains("list")) {
-                    sendResponse(writer, jsonFormatter.marshall(getUserList(path)), Status.OK, ContentType.JSON);
+                    sendResponse(writer, jsonFormatter.marshall(getUserList(path, fileExtension)), Status.OK, ContentType.JSON);
                 } else {
                     int id = Integer.valueOf(query.substring(query.lastIndexOf('/') + 1, query.length()));
-                    User user = getUser(path, id);
+                    User user = getUser(path, id, fileExtension);
                     if (user == null){
                         sendResponse(writer, "User not found", Status.NOT_FOUND, ContentType.HTML);
                     } else{
@@ -172,9 +155,9 @@ public class Server {
         }
     }
 
-    private int saveUser(User user, Path path){
-        int id = getFreeId(path, ".bin");
-        try(ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(path.toString() + "/" + id + ".bin"))) {
+    private int saveUser(User user, Path path, String fileExtension){
+        int id = getFreeId(path, fileExtension);
+        try(ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(path.toString() + "/" + id + fileExtension))) {
             out.writeObject(user);
         } catch (IOException e) {
             e.printStackTrace();
@@ -182,13 +165,13 @@ public class Server {
         return id;
     }
 
-    private boolean deleteUser(int id, Path path){
-        File file = new File(path.toString() + "/" + id + ".bin");
+    private boolean deleteUser(int id, Path path, String fileExtension){
+        File file = new File(path.toString() + "/" + id + fileExtension);
         return file.delete();
     }
 
-    private Set<User> getUserList(Path path){
-        Set<File> fileSet = getFileList(path, ".bin");
+    private Set<User> getUserList(Path path, String fileExtension){
+        Set<File> fileSet = getFileList(path, fileExtension);
         Set<User> users = new HashSet<>();
         for(File file : fileSet) {
             try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(file))) {
@@ -200,8 +183,8 @@ public class Server {
         return users;
     }
 
-    private User getUser(Path path, int id){
-        File file = new File(path.toString() + "/" + id + ".bin");
+    private User getUser(Path path, int id, String fileExtension){
+        File file = new File(path.toString() + "/" + id + fileExtension);
         if (file.isFile()){
             try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(file))) {
                 return ((User)in.readObject());
