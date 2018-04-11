@@ -3,11 +3,11 @@ package ru.sbt.jschool.session6;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
-import java.util.Calendar;
-import java.util.Locale;
-import java.util.Properties;
-import java.util.TimeZone;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class Server {
     public static void main(String[] args) throws IOException{
@@ -24,6 +24,12 @@ public class Server {
     public void start() throws IOException {
         Properties properties = getProperties();
         ServerSocket serverSocket = new ServerSocket(Integer.valueOf(properties.getProperty("port")));
+        System.out.println(getFreeId(properties));
+
+/*        Path file = Paths.get(properties.getProperty("directory") + "/file.txt");
+        List<String> lines = Arrays.asList("The first line", "The second line");
+        Files.write(file, lines, Charset.forName("UTF-8"));*/
+
         while (true) {
             try (
                     Socket socket = serverSocket.accept();
@@ -102,5 +108,18 @@ public class Server {
             e.printStackTrace();
         }
         return properties;
+    }
+
+    private int getFreeId(Properties properties){
+        Path path = Paths.get(properties.getProperty("directory"));
+        File file = path.toFile();
+        Set<Integer> ids = Arrays.stream(Objects.requireNonNull(file.list((dir, name) -> name.endsWith(".bin"))))
+                .map(v -> Integer.valueOf(v.substring(0, v.length() - 4)))
+                .collect(Collectors.toSet());
+        for (int i = 0; true; i++) {
+            if (!ids.contains(i)){
+                return i;
+            }
+        }
     }
 }
