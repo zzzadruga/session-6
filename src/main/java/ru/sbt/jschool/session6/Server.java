@@ -6,16 +6,24 @@ import java.net.Socket;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Locale;
+import java.util.Properties;
 import java.util.TimeZone;
 
 public class Server {
-    public static final String PATH_TO_PROPERTIES = "src/main/resources/config.properties";
     public static void main(String[] args) throws IOException{
-        Server server = new Server();
+        String defaultPath = "src/main/resources/config.properties";
+        Server server = new Server(args.length == 0 ? defaultPath : args[0]);
         server.start();
     }
+    private String pathToProperties;
+
+    public Server(String pathToProperties) {
+        this.pathToProperties = pathToProperties;
+    }
+
     public void start() throws IOException {
-        ServerSocket serverSocket = new ServerSocket(8080);
+        Properties properties = getProperties();
+        ServerSocket serverSocket = new ServerSocket(Integer.valueOf(properties.getProperty("port")));
         while (true) {
             try (
                     Socket socket = serverSocket.accept();
@@ -72,7 +80,7 @@ public class Server {
                 .append("Date: ")
                 .append(getServerTime())
                 .append("\r\n")
-                .append("Server: zzzadruga/0.0.1\r\n")
+                .append("Server: java/1.8\r\n")
                 .append("Content-Type: ")
                 .append(contentType.toString())
                 .append("\r\n")
@@ -84,5 +92,15 @@ public class Server {
                 .append(message.toUpperCase());
         writer.write(response.toString());
         writer.flush();
+    }
+
+    private Properties getProperties(){
+        Properties properties = new Properties();
+        try {
+            properties.load(new FileInputStream(pathToProperties));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return properties;
     }
 }
