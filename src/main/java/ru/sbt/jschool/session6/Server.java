@@ -24,9 +24,9 @@ public class Server {
     public void start() throws IOException {
         Properties properties = getProperties();
         ServerSocket serverSocket = new ServerSocket(Integer.valueOf(properties.getProperty("port")));
-        System.out.println(getFreeId(properties));
+        System.out.println(getFreeId(Paths.get(properties.getProperty("directory")), ".bin"));
 
-/*        Path file = Paths.get(properties.getProperty("directory") + "/file.txt");
+/*       Path file = Paths.get(properties.getProperty("directory") + "/file.txt");
         List<String> lines = Arrays.asList("The first line", "The second line");
         Files.write(file, lines, Charset.forName("UTF-8"));*/
 
@@ -37,11 +37,7 @@ public class Server {
                     BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
             ) {
                 String query = readInputHeaders(reader);
-                if (query.equals("error")){
-                    sendResponse(writer, "Not found", Status.NOT_FOUND, ContentType.HTML);
-                }else {
-                    sendResponse(writer, query, Status.OK, ContentType.HTML);
-                }
+                createResponse(query, writer, Paths.get(properties.getProperty("directory")));
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -110,16 +106,43 @@ public class Server {
         return properties;
     }
 
-    private int getFreeId(Properties properties){
-        Path path = Paths.get(properties.getProperty("directory"));
+    private int getFreeId(Path path, String endsWith){
         File file = path.toFile();
-        Set<Integer> ids = Arrays.stream(Objects.requireNonNull(file.list((dir, name) -> name.endsWith(".bin"))))
-                .map(v -> Integer.valueOf(v.substring(0, v.length() - 4)))
+        Set<Integer> ids = Arrays.stream(Objects.requireNonNull(file.list((dir, name) -> name.endsWith(endsWith))))
+                .map(v -> Integer.valueOf(v.substring(0, v.length() - endsWith.length())))
                 .collect(Collectors.toSet());
         for (int i = 0; true; i++) {
             if (!ids.contains(i)){
                 return i;
             }
         }
+    }
+
+    private void createResponse(String query, BufferedWriter writer, Path path){
+        try {
+            if (query.startsWith("/user/")) {
+                if (query.contains("create")){
+                    Map<String, String> args = Arrays.stream(query.substring(query.indexOf('?')).split("&"))
+                            .collect(Collectors.toMap(v -> v.split("=")[0], v -> v.split("=")[1]));
+                    int id = saveUser(new User(args.get("name"), Integer.valueOf(args.get("age")), Integer.valueOf(args.get("salary"))), path);
+                    sendResponse(writer, "ID " + id, Status.OK, ContentType.HTML);
+                }
+            }
+            else{
+                sendResponse(writer, "Unknown request", Status.NOT_FOUND, ContentType.HTML);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private int saveUser(User user, Path path){
+        int id = getFreeId(path, ".bin");
+        try(ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(id + ".bin"))) {
+            out.writeObject(user);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return id;
     }
 }

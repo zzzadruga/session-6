@@ -1,8 +1,9 @@
 package ru.sbt.jschool.session6;
 
+import java.io.Serializable;
 import java.util.Objects;
 
-public class User {
+public class User implements Serializable{
     private String name;
     private int age;
     private int salary;
@@ -52,6 +53,4 @@ public class User {
 
         return Objects.hash(getName(), getAge(), getSalary());
     }
-
-
 }
