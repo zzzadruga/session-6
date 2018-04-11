@@ -1,5 +1,8 @@
 package ru.sbt.jschool.session6;
 
+import ru.sbt.jschool.session6.JSONFormatter.JSONFormatter;
+import ru.sbt.jschool.session6.JSONFormatter.JSONFormatterImpl;
+
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -24,7 +27,6 @@ public class Server {
     public void start() throws IOException {
         Properties properties = getProperties();
         ServerSocket serverSocket = new ServerSocket(Integer.valueOf(properties.getProperty("port")));
-        System.out.println(getFreeId(Paths.get(properties.getProperty("directory")), ".bin"));
         while (true) {
             try (
                     Socket socket = serverSocket.accept();
@@ -106,8 +108,9 @@ public class Server {
 
     private int getFreeId(Path path, String endsWith){
         File file = path.toFile();
-        Set<Integer> ids = Arrays.stream(Objects.requireNonNull(file.list((dir, name) -> name.endsWith(endsWith))))
-                .map(v -> Integer.valueOf(v.substring(0, v.length() - endsWith.length())))
+        Set<Integer> ids =  getFileList(path, endsWith)
+                .stream()
+                .map(v -> Integer.valueOf(v.getName().substring(0, v.getName().length() - endsWith.length())))
                 .collect(Collectors.toSet());
         for (int i = 0; true; i++) {
             if (!ids.contains(i)){
@@ -116,11 +119,18 @@ public class Server {
         }
     }
 
-    private void createResponse(String query, BufferedWriter writer, Path path){
+    private Set<File> getFileList(Path path, String endsWith){
+        Set<File> fileList = Arrays
+                .stream(Objects.requireNonNull(path.toFile().listFiles()))
+                .filter(v -> v.getName().endsWith(endsWith)).collect(Collectors.toSet());
+        return fileList;
+    }
+
+    private void createResponse(String query, BufferedWriter writer, Path path) {
         try {
             if (query.startsWith("user")) {
                 if (query.contains("create")){
-                    Map<String, String> args = Arrays.stream(query.substring(query.indexOf('?')).split("&"))
+                    Map<String, String> args = Arrays.stream(query.substring(query.indexOf('?') + 1).split("&"))
                             .collect(Collectors.toMap(v -> v.split("=")[0], v -> v.split("=")[1]));
                     int id = saveUser(new User(args.get("name"), Integer.valueOf(args.get("age")), Integer.valueOf(args.get("salary"))), path);
                     sendResponse(writer, "ID " + id, Status.OK, ContentType.HTML);
@@ -133,11 +143,17 @@ public class Server {
                         sendResponse(writer, "User not found", Status.NOT_FOUND, ContentType.HTML);
                     }
                 }
+                if (query.contains("list")) {
+                    JSONFormatter jsonFormatter = new JSONFormatterImpl();
+                    sendResponse(writer, jsonFormatter.marshall(getUserList(path)), Status.OK, ContentType.JSON);
+                    System.out.println(jsonFormatter.marshall(getUserList(path)));
+                }
+
             }
             else{
                 sendResponse(writer, "Unknown request", Status.NOT_FOUND, ContentType.HTML);
             }
-        } catch (IOException e) {
+        } catch (IOException | IllegalAccessException e) {
             e.printStackTrace();
         }
     }
@@ -155,5 +171,18 @@ public class Server {
     private boolean deleteUser(int id, Path path){
         File file = new File(path.toString() + "/" + id + ".bin");
         return file.delete();
+    }
+
+    private Set<User> getUserList(Path path){
+        Set<File> fileSet = getFileList(path, ".bin");
+        Set<User> users = new HashSet<>();
+        for(File file : fileSet) {
+            try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(file))) {
+                users.add((User)in.readObject());
+            } catch (IOException | ClassNotFoundException e) {
+                e.printStackTrace();
+            }
+        }
+        return users;
     }
 }
