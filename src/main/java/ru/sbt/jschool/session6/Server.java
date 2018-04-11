@@ -25,11 +25,6 @@ public class Server {
         Properties properties = getProperties();
         ServerSocket serverSocket = new ServerSocket(Integer.valueOf(properties.getProperty("port")));
         System.out.println(getFreeId(Paths.get(properties.getProperty("directory")), ".bin"));
-
-/*       Path file = Paths.get(properties.getProperty("directory") + "/file.txt");
-        List<String> lines = Arrays.asList("The first line", "The second line");
-        Files.write(file, lines, Charset.forName("UTF-8"));*/
-
         while (true) {
             try (
                     Socket socket = serverSocket.accept();
@@ -37,6 +32,9 @@ public class Server {
                     BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
             ) {
                 String query = readInputHeaders(reader);
+                if (query.endsWith("/")){
+                    query = query.substring(0, query.length() - 1);
+                }
                 createResponse(query, writer, Paths.get(properties.getProperty("directory")));
             } catch (Exception e) {
                 e.printStackTrace();
@@ -127,6 +125,14 @@ public class Server {
                     int id = saveUser(new User(args.get("name"), Integer.valueOf(args.get("age")), Integer.valueOf(args.get("salary"))), path);
                     sendResponse(writer, "ID " + id, Status.OK, ContentType.HTML);
                 }
+                if (query.contains("delete")) {
+                    int id = Integer.valueOf(query.substring(query.lastIndexOf('/') + 1, query.length()));
+                    if (deleteUser(id, path)){
+                        sendResponse(writer, "Done", Status.OK, ContentType.HTML);
+                    } else {
+                        sendResponse(writer, "User not found", Status.NOT_FOUND, ContentType.HTML);
+                    }
+                }
             }
             else{
                 sendResponse(writer, "Unknown request", Status.NOT_FOUND, ContentType.HTML);
@@ -144,5 +150,10 @@ public class Server {
             e.printStackTrace();
         }
         return id;
+    }
+
+    private boolean deleteUser(int id, Path path){
+        File file = new File(path.toString() + "/" + id + ".bin");
+        return file.delete();
     }
 }
