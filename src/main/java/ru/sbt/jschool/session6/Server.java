@@ -91,7 +91,7 @@ public class Server {
                 .append("\r\n")
                 .append("Connection: keep-alive\r\n")
                 .append("\r\n")
-                .append(message.toUpperCase());
+                .append(message);
         writer.write(response.toString());
         writer.flush();
     }
@@ -120,7 +120,7 @@ public class Server {
 
     private void createResponse(String query, BufferedWriter writer, Path path){
         try {
-            if (query.startsWith("/user/")) {
+            if (query.startsWith("user")) {
                 if (query.contains("create")){
                     Map<String, String> args = Arrays.stream(query.substring(query.indexOf('?')).split("&"))
                             .collect(Collectors.toMap(v -> v.split("=")[0], v -> v.split("=")[1]));
@@ -138,7 +138,7 @@ public class Server {
 
     private int saveUser(User user, Path path){
         int id = getFreeId(path, ".bin");
-        try(ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(id + ".bin"))) {
+        try(ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(path.toString() + "/" + id + ".bin"))) {
             out.writeObject(user);
         } catch (IOException e) {
             e.printStackTrace();
