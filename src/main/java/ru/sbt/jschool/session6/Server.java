@@ -13,7 +13,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class Server {
-    public static void main(String[] args) throws IOException{
+    public static void main(String[] args){
         String defaultPath = "src/main/resources/config.properties";
         Server server = new Server(args.length == 0 ? defaultPath : args[0]);
         server.start();
@@ -24,9 +24,14 @@ public class Server {
         this.pathToProperties = pathToProperties;
     }
 
-    public void start() throws IOException {
+    public void start() {
         Properties properties = getProperties();
-        ServerSocket serverSocket = new ServerSocket(Integer.valueOf(properties.getProperty("port")));
+        ServerSocket serverSocket = null;
+        try {
+            serverSocket = new ServerSocket(Integer.valueOf(properties.getProperty("port")));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
         while (true) {
             try (
                     Socket socket = serverSocket.accept();
@@ -74,26 +79,30 @@ public class Server {
         return query;
     }
 
-    private void sendResponse(BufferedWriter writer, String message, Status status, ContentType contentType) throws IOException {
-        StringBuilder response = new StringBuilder();
-        response.append("HTTP/1.1 ")
-                .append(status.toString())
-                .append("\r\n")
-                .append("Date: ")
-                .append(getServerTime())
-                .append("\r\n")
-                .append("Server: java/1.8\r\n")
-                .append("Content-Type: ")
-                .append(contentType.toString())
-                .append("\r\n")
-                .append("Content-Length: ")
-                .append(message.length())
-                .append("\r\n")
-                .append("Connection: keep-alive\r\n")
-                .append("\r\n")
-                .append(message);
-        writer.write(response.toString());
-        writer.flush();
+    private void sendResponse(BufferedWriter writer, String message, Status status, ContentType contentType) {
+        try {
+            StringBuilder response = new StringBuilder();
+            response.append("HTTP/1.1 ")
+                    .append(status.toString())
+                    .append("\r\n")
+                    .append("Date: ")
+                    .append(getServerTime())
+                    .append("\r\n")
+                    .append("Server: java/1.8\r\n")
+                    .append("Content-Type: ")
+                    .append(contentType.toString())
+                    .append("\r\n")
+                    .append("Content-Length: ")
+                    .append(message.length())
+                    .append("\r\n")
+                    .append("Connection: keep-alive\r\n")
+                    .append("\r\n")
+                    .append(message);
+            writer.write(response.toString());
+            writer.flush();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private Properties getProperties(){
@@ -129,31 +138,36 @@ public class Server {
     private void createResponse(String query, BufferedWriter writer, Path path) {
         try {
             if (query.startsWith("user")) {
+                JSONFormatter jsonFormatter = new JSONFormatterImpl();
                 if (query.contains("create")){
                     Map<String, String> args = Arrays.stream(query.substring(query.indexOf('?') + 1).split("&"))
                             .collect(Collectors.toMap(v -> v.split("=")[0], v -> v.split("=")[1]));
                     int id = saveUser(new User(args.get("name"), Integer.valueOf(args.get("age")), Integer.valueOf(args.get("salary"))), path);
                     sendResponse(writer, "ID " + id, Status.OK, ContentType.HTML);
-                }
-                if (query.contains("delete")) {
+                } else if (query.contains("delete")) {
                     int id = Integer.valueOf(query.substring(query.lastIndexOf('/') + 1, query.length()));
                     if (deleteUser(id, path)){
                         sendResponse(writer, "Done", Status.OK, ContentType.HTML);
                     } else {
                         sendResponse(writer, "User not found", Status.NOT_FOUND, ContentType.HTML);
                     }
-                }
-                if (query.contains("list")) {
-                    JSONFormatter jsonFormatter = new JSONFormatterImpl();
+                } else if (query.contains("list")) {
                     sendResponse(writer, jsonFormatter.marshall(getUserList(path)), Status.OK, ContentType.JSON);
-                    System.out.println(jsonFormatter.marshall(getUserList(path)));
+                } else {
+                    int id = Integer.valueOf(query.substring(query.lastIndexOf('/') + 1, query.length()));
+                    User user = getUser(path, id);
+                    if (user == null){
+                        sendResponse(writer, "User not found", Status.NOT_FOUND, ContentType.HTML);
+                    } else{
+                        sendResponse(writer, jsonFormatter.marshall(user), Status.OK, ContentType.JSON);
+                    }
                 }
-
             }
             else{
                 sendResponse(writer, "Unknown request", Status.NOT_FOUND, ContentType.HTML);
             }
-        } catch (IOException | IllegalAccessException e) {
+        } catch (Exception e) {
+            sendResponse(writer, e.toString(), Status.NOT_FOUND, ContentType.HTML);
             e.printStackTrace();
         }
     }
@@ -184,5 +198,17 @@ public class Server {
             }
         }
         return users;
+    }
+
+    private User getUser(Path path, int id){
+        File file = new File(path.toString() + "/" + id + ".bin");
+        if (file.isFile()){
+            try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(file))) {
+                return ((User)in.readObject());
+            } catch (IOException | ClassNotFoundException e) {
+                e.printStackTrace();
+            }
+        }
+        return null;
     }
 }
