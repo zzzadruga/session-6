@@ -23,22 +23,11 @@ public class Server {
                     BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
             ) {
                 String query = readInputHeaders(reader);
-                StringBuilder response = new StringBuilder();
-                response.append("HTTP/1.0 200 OK\r\n")
-                        .append("Date: ")
-                        .append(getServerTime())
-                        .append("\r\n")
-                        .append("Server: Zzzadrua/0.0.1\r\n")
-                        .append("Content-Type: application/json\r\n")
-                        .append("Content-Length: ")
-                        .append(query.length())
-                        .append("\r\n")
-                        .append("Connection: close\r\n")
-                        .append("\r\n")
-                        .append(query.toUpperCase());
-                writer.write(response.toString());
-                writer.flush();
-                System.out.println("Ожидание новых соединений");
+                if (query.equals("error")){
+                    sendResponse(writer, "Not found", Status.NOT_FOUND, ContentType.HTML);
+                }else {
+                    sendResponse(writer, query, Status.OK, ContentType.HTML);
+                }
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -73,5 +62,27 @@ public class Server {
         }
         System.out.println(stringBuilder);
         return query;
+    }
+
+    private void sendResponse(BufferedWriter writer, String message, Status status, ContentType contentType) throws IOException {
+        StringBuilder response = new StringBuilder();
+        response.append("HTTP/1.1 ")
+                .append(status.toString())
+                .append("\r\n")
+                .append("Date: ")
+                .append(getServerTime())
+                .append("\r\n")
+                .append("Server: zzzadruga/0.0.1\r\n")
+                .append("Content-Type: ")
+                .append(contentType.toString())
+                .append("\r\n")
+                .append("Content-Length: ")
+                .append(message.length())
+                .append("\r\n")
+                .append("Connection: keep-alive\r\n")
+                .append("\r\n")
+                .append(message.toUpperCase());
+        writer.write(response.toString());
+        writer.flush();
     }
 }
