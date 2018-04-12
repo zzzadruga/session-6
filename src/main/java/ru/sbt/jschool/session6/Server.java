@@ -13,11 +13,16 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class Server {
-    public static void main(String[] args){
+    private static final String USER_NOT_FOUND = "User not found";
+    private static final String UNKNOWN_REQUEST = "Unknown request";
+    private static final String DONE = "Done";
+
+    public static void main(String[] args) {
         String defaultPath = "src/main/resources/config.properties";
         Server server = new Server(args.length == 0 ? defaultPath : args[0]);
         server.start();
     }
+
     private String pathToProperties;
 
     public Server(String pathToProperties) {
@@ -80,8 +85,8 @@ public class Server {
         try {
             String response = String
                     .format("HTTP/1.1 %s\r\n" +
-                            "Date: %s\r\nServer: java/1.8\r\nContent-Type: %s\r\nContent-Length: %s\r\nConnection: keep-alive\r\n\n%s",
-                    status.toString(), getServerTime(), contentType.toString(), message.length(), message);
+                                    "Date: %s\r\nServer: java/1.8\r\nContent-Type: %s\r\nContent-Length: %s\r\nConnection: keep-alive\r\n\n%s",
+                            status.toString(), getServerTime(), contentType.toString(), message.length(), message);
             writer.write(response);
             writer.flush();
         } catch (IOException e) {
@@ -89,7 +94,7 @@ public class Server {
         }
     }
 
-    private Properties getProperties(){
+    private Properties getProperties() {
         Properties properties = new Properties();
         try {
             properties.load(new FileInputStream(pathToProperties));
@@ -99,20 +104,20 @@ public class Server {
         return properties;
     }
 
-    private int getFreeId(Path path, String fileExtension){
+    private int getFreeId(Path path, String fileExtension) {
         File file = path.toFile();
-        Set<Integer> ids =  getFileList(path, fileExtension)
+        Set<Integer> ids = getFileList(path, fileExtension)
                 .stream()
                 .map(v -> Integer.valueOf(v.getName().substring(0, v.getName().length() - fileExtension.length())))
                 .collect(Collectors.toSet());
         for (int i = 0; true; i++) {
-            if (!ids.contains(i)){
+            if (!ids.contains(i)) {
                 return i;
             }
         }
     }
 
-    private Set<File> getFileList(Path path, String fileExtension){
+    private Set<File> getFileList(Path path, String fileExtension) {
         return Arrays
                 .stream(Objects.requireNonNull(path.toFile().listFiles()))
                 .filter(v -> v.getName().endsWith(fileExtension)).collect(Collectors.toSet());
@@ -122,32 +127,31 @@ public class Server {
         try {
             if (query.startsWith("user")) {
                 JSONFormatter jsonFormatter = new JSONFormatterImpl();
-                if (query.contains("create")){
+                if (query.contains("create")) {
                     Map<String, String> args = Arrays.stream(query.substring(query.indexOf('?') + 1).split("&"))
                             .collect(Collectors.toMap(v -> v.split("=")[0], v -> v.split("=")[1]));
                     int id = saveUser(new User(args.get("name"), Integer.valueOf(args.get("age")), Integer.valueOf(args.get("salary"))), path, fileExtension);
                     sendResponse(writer, "ID " + id, Status.OK, ContentType.HTML);
                 } else if (query.contains("delete")) {
                     int id = Integer.valueOf(query.substring(query.lastIndexOf('/') + 1, query.length()));
-                    if (deleteUser(id, path, fileExtension)){
-                        sendResponse(writer, "Done", Status.OK, ContentType.HTML);
+                    if (deleteUser(id, path, fileExtension)) {
+                        sendResponse(writer, DONE, Status.OK, ContentType.HTML);
                     } else {
-                        sendResponse(writer, "User not found", Status.NOT_FOUND, ContentType.HTML);
+                        sendResponse(writer, USER_NOT_FOUND, Status.NOT_FOUND, ContentType.HTML);
                     }
                 } else if (query.contains("list")) {
                     sendResponse(writer, jsonFormatter.marshall(getUserList(path, fileExtension)), Status.OK, ContentType.JSON);
                 } else {
                     int id = Integer.valueOf(query.substring(query.lastIndexOf('/') + 1, query.length()));
                     User user = getUser(path, id, fileExtension);
-                    if (user == null){
-                        sendResponse(writer, "User not found", Status.NOT_FOUND, ContentType.HTML);
-                    } else{
+                    if (user == null) {
+                        sendResponse(writer, USER_NOT_FOUND, Status.NOT_FOUND, ContentType.HTML);
+                    } else {
                         sendResponse(writer, jsonFormatter.marshall(user), Status.OK, ContentType.JSON);
                     }
                 }
-            }
-            else{
-                sendResponse(writer, "Unknown request", Status.NOT_FOUND, ContentType.HTML);
+            } else {
+                sendResponse(writer, UNKNOWN_REQUEST, Status.NOT_FOUND, ContentType.HTML);
             }
         } catch (Exception e) {
             sendResponse(writer, e.toString(), Status.NOT_FOUND, ContentType.HTML);
@@ -155,9 +159,9 @@ public class Server {
         }
     }
 
-    private int saveUser(User user, Path path, String fileExtension){
+    private int saveUser(User user, Path path, String fileExtension) {
         int id = getFreeId(path, fileExtension);
-        try(ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(path.toString() + "/" + id + fileExtension))) {
+        try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(path.toString() + File.separator + id + fileExtension))) {
             out.writeObject(user);
         } catch (IOException e) {
             e.printStackTrace();
@@ -165,17 +169,17 @@ public class Server {
         return id;
     }
 
-    private boolean deleteUser(int id, Path path, String fileExtension){
-        File file = new File(path.toString() + "/" + id + fileExtension);
+    private boolean deleteUser(int id, Path path, String fileExtension) {
+        File file = new File(path.toString() + File.separator + id + fileExtension);
         return file.delete();
     }
 
-    private Set<User> getUserList(Path path, String fileExtension){
+    private List<User> getUserList(Path path, String fileExtension) {
         Set<File> fileSet = getFileList(path, fileExtension);
-        Set<User> users = new HashSet<>();
-        for(File file : fileSet) {
+        List<User> users = new ArrayList<>();
+        for (File file : fileSet) {
             try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(file))) {
-                users.add((User)in.readObject());
+                users.add((User) in.readObject());
             } catch (IOException | ClassNotFoundException e) {
                 e.printStackTrace();
             }
@@ -183,11 +187,11 @@ public class Server {
         return users;
     }
 
-    private User getUser(Path path, int id, String fileExtension){
-        File file = new File(path.toString() + "/" + id + fileExtension);
-        if (file.isFile()){
+    private User getUser(Path path, int id, String fileExtension) {
+        File file = new File(path.toString() + File.separator + id + fileExtension);
+        if (file.isFile()) {
             try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(file))) {
-                return ((User)in.readObject());
+                return ((User) in.readObject());
             } catch (IOException | ClassNotFoundException e) {
                 e.printStackTrace();
             }
