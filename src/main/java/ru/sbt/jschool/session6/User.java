@@ -4,6 +4,9 @@ import java.io.Serializable;
 import java.util.Objects;
 
 public class User implements Serializable{
+    public static void main(String[] args) {
+
+    }
     private String name;
     private int age;
     private int salary;
@@ -52,5 +55,11 @@ public class User implements Serializable{
     public int hashCode() {
 
         return Objects.hash(getName(), getAge(), getSalary());
+    }
+
+    public static class DeleteUser{
+        public int getUser(){
+            return 1;
+        }
     }
 }

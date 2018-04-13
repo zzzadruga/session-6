@@ -16,6 +16,9 @@ public class Server {
     private static final String USER_NOT_FOUND = "User not found";
     private static final String UNKNOWN_REQUEST = "Unknown request";
     private static final String DONE = "Done";
+    private static final String RESPONSE_FORMAT = "HTTP/1.1 %s\r\n" +
+            "Date: %s\r\nServer: java/1.8\r\nContent-Type: %s\r\nContent-Length: %s\r\nConnection: keep-alive\r\n\n%s";
+
 
     public static void main(String[] args) {
         String defaultPath = "src/main/resources/config.properties";
@@ -84,8 +87,7 @@ public class Server {
     private void sendResponse(BufferedWriter writer, String message, Status status, ContentType contentType) {
         try {
             String response = String
-                    .format("HTTP/1.1 %s\r\n" +
-                                    "Date: %s\r\nServer: java/1.8\r\nContent-Type: %s\r\nContent-Length: %s\r\nConnection: keep-alive\r\n\n%s",
+                    .format(RESPONSE_FORMAT,
                             status.toString(), getServerTime(), contentType.toString(), message.length(), message);
             writer.write(response);
             writer.flush();
@@ -130,10 +132,10 @@ public class Server {
                 if (query.contains("create")) {
                     Map<String, String> args = Arrays.stream(query.substring(query.indexOf('?') + 1).split("&"))
                             .collect(Collectors.toMap(v -> v.split("=")[0], v -> v.split("=")[1]));
-                    int id = saveUser(new User(args.get("name"), Integer.valueOf(args.get("age")), Integer.valueOf(args.get("salary"))), path, fileExtension);
+                    int id = saveUser(new User(args.get("name"), Integer.parseInt(args.get("age")), Integer.parseInt(args.get("salary"))), path, fileExtension);
                     sendResponse(writer, "ID " + id, Status.OK, ContentType.HTML);
                 } else if (query.contains("delete")) {
-                    int id = Integer.valueOf(query.substring(query.lastIndexOf('/') + 1, query.length()));
+                    int id = Integer.parseInt(query.substring(query.lastIndexOf('/') + 1, query.length()));
                     if (deleteUser(id, path, fileExtension)) {
                         sendResponse(writer, DONE, Status.OK, ContentType.HTML);
                     } else {
@@ -142,7 +144,7 @@ public class Server {
                 } else if (query.contains("list")) {
                     sendResponse(writer, jsonFormatter.marshall(getUserList(path, fileExtension)), Status.OK, ContentType.JSON);
                 } else {
-                    int id = Integer.valueOf(query.substring(query.lastIndexOf('/') + 1, query.length()));
+                    int id = Integer.parseInt(query.substring(query.lastIndexOf('/') + 1, query.length()));
                     User user = getUser(path, id, fileExtension);
                     if (user == null) {
                         sendResponse(writer, USER_NOT_FOUND, Status.NOT_FOUND, ContentType.HTML);
