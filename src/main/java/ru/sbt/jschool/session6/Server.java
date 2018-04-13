@@ -30,12 +30,12 @@ public class Server {
     }
 
     public void start() {
-        Properties properties = getProperties();
+        ApplicationProperties properties = getProperties();
         ServerSocket serverSocket = null;
         try {
-            serverSocket = new ServerSocket(Integer.valueOf(properties.getProperty("port")));
+            serverSocket = new ServerSocket(properties.getIntProperty("port"));
         } catch (IOException e) {
-            e.printStackTrace();
+            throw new RuntimeException("Невозможно открыть серверный сокет");
         }
         while (true) {
             try (
@@ -94,8 +94,8 @@ public class Server {
         }
     }
 
-    private Properties getProperties() {
-        Properties properties = new Properties();
+    private ApplicationProperties getProperties() {
+        ApplicationProperties properties = new ApplicationProperties(new Properties());
         try {
             properties.load(new FileInputStream(pathToProperties));
         } catch (IOException e) {
