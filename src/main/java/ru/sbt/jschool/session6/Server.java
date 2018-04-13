@@ -13,13 +13,6 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class Server {
-    private static final String USER_NOT_FOUND = "User not found";
-    private static final String UNKNOWN_REQUEST = "Unknown request";
-    private static final String DONE = "Done";
-    private static final String RESPONSE_FORMAT = "HTTP/1.1 %s\r\n" +
-            "Date: %s\r\nServer: java/1.8\r\nContent-Type: %s\r\nContent-Length: %s\r\nConnection: keep-alive\r\n\n%s";
-
-
     public static void main(String[] args) {
         String defaultPath = "src/main/resources/config.properties";
         Server server = new Server(args.length == 0 ? defaultPath : args[0]);
@@ -44,22 +37,14 @@ public class Server {
             try (
                     Socket socket = Objects.requireNonNull(serverSocket).accept();
                     BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                    BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+                    OutputStream outputStream = socket.getOutputStream();
             ) {
                 String request = readRequest(reader);
-                createResponse(request, writer, Paths.get(properties.getProperty("directory")), properties.getProperty("fileExtension"));
+                createResponse(request, outputStream, Paths.get(properties.getProperty("directory")), properties.getProperty("fileExtension"));
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
-    }
-
-    private String getServerTime() {
-        Calendar calendar = Calendar.getInstance();
-        SimpleDateFormat dateFormat = new SimpleDateFormat(
-                "EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
-        dateFormat.setTimeZone(TimeZone.getTimeZone("Europe/Moscow"));
-        return dateFormat.format(calendar.getTime());
     }
 
     private String readRequest(BufferedReader bufferedReader) {
@@ -84,18 +69,6 @@ public class Server {
         return (request.endsWith("/") ? request.substring(0, request.length() - 1) : request);
     }
 
-    private void sendResponse(BufferedWriter writer, String message, Status status, ContentType contentType) {
-        try {
-            String response = String
-                    .format(RESPONSE_FORMAT,
-                            status.toString(), getServerTime(), contentType.toString(), message.length(), message);
-            writer.write(response);
-            writer.flush();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
     private ApplicationProperties getProperties() {
         ApplicationProperties properties = new ApplicationProperties(new Properties());
         try {
@@ -107,7 +80,6 @@ public class Server {
     }
 
     private int getFreeId(Path path, String fileExtension) {
-        File file = path.toFile();
         Set<Integer> ids = getFileList(path, fileExtension)
                 .stream()
                 .map(v -> Integer.valueOf(v.getName().substring(0, v.getName().length() - fileExtension.length())))
@@ -125,38 +97,30 @@ public class Server {
                 .filter(v -> v.getName().endsWith(fileExtension)).collect(Collectors.toSet());
     }
 
-    private void createResponse(String query, BufferedWriter writer, Path path, String fileExtension) {
+    private void createResponse(String query, OutputStream outputStream, Path path, String fileExtension) {
+        JSONFormatter jsonFormatter = new JSONFormatterImpl();
+        Response response = new Response(outputStream, jsonFormatter);
         try {
             if (query.startsWith("user")) {
-                JSONFormatter jsonFormatter = new JSONFormatterImpl();
                 if (query.contains("create")) {
                     Map<String, String> args = Arrays.stream(query.substring(query.indexOf('?') + 1).split("&"))
                             .collect(Collectors.toMap(v -> v.split("=")[0], v -> v.split("=")[1]));
                     int id = saveUser(new User(args.get("name"), Integer.parseInt(args.get("age")), Integer.parseInt(args.get("salary"))), path, fileExtension);
-                    sendResponse(writer, "ID " + id, Status.OK, ContentType.HTML);
+                    response.sendResponse("ID " + id);
                 } else if (query.contains("delete")) {
                     int id = Integer.parseInt(query.substring(query.lastIndexOf('/') + 1, query.length()));
-                    if (deleteUser(id, path, fileExtension)) {
-                        sendResponse(writer, DONE, Status.OK, ContentType.HTML);
-                    } else {
-                        sendResponse(writer, USER_NOT_FOUND, Status.NOT_FOUND, ContentType.HTML);
-                    }
+                    response.sendResponse(deleteUser(id, path, fileExtension));
                 } else if (query.contains("list")) {
-                    sendResponse(writer, jsonFormatter.marshall(getUserList(path, fileExtension)), Status.OK, ContentType.JSON);
+                    response.sendResponse(getUserList(path, fileExtension));
                 } else {
                     int id = Integer.parseInt(query.substring(query.lastIndexOf('/') + 1, query.length()));
-                    User user = getUser(path, id, fileExtension);
-                    if (user == null) {
-                        sendResponse(writer, USER_NOT_FOUND, Status.NOT_FOUND, ContentType.HTML);
-                    } else {
-                        sendResponse(writer, jsonFormatter.marshall(user), Status.OK, ContentType.JSON);
-                    }
+                    response.sendResponse(getUser(path, id, fileExtension));
                 }
             } else {
-                sendResponse(writer, UNKNOWN_REQUEST, Status.NOT_FOUND, ContentType.HTML);
+                response.sendResponse(null);
             }
         } catch (Exception e) {
-            sendResponse(writer, e.toString(), Status.NOT_FOUND, ContentType.HTML);
+            response.sendResponse(e.toString());
             e.printStackTrace();
         }
     }
